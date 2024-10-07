@@ -9,6 +9,7 @@ import IModelData from '@src/core/interfaces/IModelData';
 import { App } from '@src/core/services/App';
 import Str from '@src/core/util/str/Str';
 
+
 /**
  * Abstract base class for database models.
  * Extends WithObserver to provide observation capabilities.
@@ -17,6 +18,8 @@ import Str from '@src/core/util/str/Str';
  * @template Data Type extending IModelData, representing the structure of the model's data.
  */
 export default abstract class Model<Data extends IModelData> extends WithObserver<Data> implements IModel<Data> {
+
+    public name!: string;
 
     /**
      * The name of the database connection to use.
@@ -86,6 +89,7 @@ export default abstract class Model<Data extends IModelData> extends WithObserve
     constructor(data: Data | null) {
         super();
         this.data = data;
+        this.name = this.constructor.name;
         this.setDefaultTable();
     }
 
@@ -97,7 +101,14 @@ export default abstract class Model<Data extends IModelData> extends WithObserve
         if (this.table) {
             return;
         }
-        this.table = Str.plural(Str.startLowerCase(this.constructor.name));
+        this.table = this.constructor.name;
+
+        if(this.table.endsWith('Model')) {
+            this.table = this.table.slice(0, -5);
+        }
+        
+        this.table = Str.plural(Str.startLowerCase(this.table))
+
     }
 
     /**
@@ -149,7 +160,9 @@ export default abstract class Model<Data extends IModelData> extends WithObserve
         }
 
         if (Object.keys(this.observeProperties).includes(key as string)) {
-            this.data = this.observeDataCustom(this.observeProperties[key as string] as keyof IObserver<any>, this.data);
+            this.observeDataCustom(this.observeProperties[key as string] as keyof IObserver<any>, this.data).then((data) => {
+                this.data = data;
+            })
         }
     }
 
@@ -245,22 +258,22 @@ export default abstract class Model<Data extends IModelData> extends WithObserve
      */
     async save(): Promise<void> {
         if (this.data && !this.getId()) {
-            this.data = this.observeData('creating', this.data);
+            this.data = await this.observeData('creating', this.data);
             this.setTimestamp('createdAt');
             this.setTimestamp('updatedAt');
 
             this.data = await this.getDocumentManager().insertOne(this.prepareDocument());
             await this.refresh();
 
-            this.data = this.observeData('created', this.data);
+            this.data = await this.observeData('created', this.data);
             return;
         }
 
-        this.data = this.observeData('updating', this.data);
+        this.data = await this.observeData('updating', this.data);
         this.setTimestamp('updatedAt');
         await this.update();
         await this.refresh();
-        this.data = this.observeData('updated', this.data);
+        this.data = await this.observeData('updated', this.data);
     }
 
     /**
@@ -270,10 +283,10 @@ export default abstract class Model<Data extends IModelData> extends WithObserve
      */
     async delete(): Promise<void> {
         if (!this.data) return;
-        this.data = this.observeData('deleting', this.data);
+        this.data = await this.observeData('deleting', this.data);
         await this.getDocumentManager().deleteOne(this.data);
         this.data = null;
-        this.observeData('deleted', this.data);
+        await this.observeData('deleted', this.data);
     }
 
     /**

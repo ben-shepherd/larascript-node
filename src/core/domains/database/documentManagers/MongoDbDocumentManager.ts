@@ -1,4 +1,5 @@
 import BaseDocumentManager from "@src/core/domains/database/base/BaseDocumentManager";
+import MongoDbQueryBuilder from "@src/core/domains/database/builder/MongoDbQueryBuilder";
 import InvalidObjectId from "@src/core/domains/database/exceptions/InvalidObjectId";
 import { FindOptions, IDatabaseDocument, OrderOptions } from "@src/core/domains/database/interfaces/IDocumentManager";
 import { IBelongsToOptions } from "@src/core/domains/database/interfaces/relationships/IBelongsTo";
@@ -9,6 +10,8 @@ import { BulkWriteOptions, ObjectId, Sort, UpdateOptions } from "mongodb";
 class MongoDbDocumentManager extends BaseDocumentManager<MongoDbDocumentManager, MongoDB> {
 
     protected driver!: MongoDB;
+
+    protected builder = new MongoDbQueryBuilder()
 
     constructor(driver: MongoDB) {
         super(driver);
@@ -102,8 +105,11 @@ class MongoDbDocumentManager extends BaseDocumentManager<MongoDbDocumentManager,
      * @param filter 
      * @returns 
      */
-    async findOne<T>({ filter = {} }: { filter?: object }): Promise<T | null> {
+    async findOne<T>({ filter = {}, allowPartialSearch = false, useFuzzySearch = false }: Pick<FindOptions, 'filter' | 'allowPartialSearch' | 'useFuzzySearch'>): Promise<T | null> {
         return this.captureError(async() => {
+
+            filter = this.builder.select({ filter, allowPartialSearch, useFuzzySearch })
+
             let document = await this.driver.getDb().collection(this.getTable()).findOne(filter) as T | null;
     
             if (document) {
@@ -117,16 +123,22 @@ class MongoDbDocumentManager extends BaseDocumentManager<MongoDbDocumentManager,
     /**
      * Find multiple documents
      * 
-     * @param filter 
-     * @returns 
+     * @param options The options for selecting the documents
+     * @returns The found documents
      */
-    async findMany<T>({ filter, order }: FindOptions): Promise<T> {
+    
+    async findMany<T>({ filter, order, limit, skip, allowPartialSearch = false, useFuzzySearch = false }: FindOptions): Promise<T> {
         return this.captureError(async() => {
+
+            filter = this.builder.select({ filter, allowPartialSearch, useFuzzySearch })
+
             const documents = await this.driver
                 .getDb()
                 .collection(this.getTable())
                 .find(filter as object, {
                     sort: order ? this.convertOrderToSort(order ?? []) : undefined,
+                    limit,
+                    skip
                 })
                 .toArray();
     
